@@ -187,7 +187,7 @@ export async function callGemini(prompt: string, file?: GeminiFile, useSearch = 
       contents: [{ parts }],
       ...(useSearch ? { tools: [{ googleSearch: {} }] } : {}),
       generationConfig: {
-        responseFormat: { text: { mimeType: "application/json", schema: extractionSchema } },
+        responseFormat: { text: { mimeType: "APPLICATION_JSON", schema: extractionSchema } },
         thinkingConfig: { thinkingLevel: "low" },
       },
     }),
