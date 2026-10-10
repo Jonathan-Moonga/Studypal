@@ -15,6 +15,7 @@ export function ImportPanelV2({ subjectId }: { subjectId: string }) {
   const [text, setText] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [activeJobId, setActiveJobId] = useState("");
   const [draft, setDraft] = useState<Draft | null>(null);
   const [error, setError] = useState("");
@@ -31,7 +32,7 @@ export function ImportPanelV2({ subjectId }: { subjectId: string }) {
       const result = await response.json();
       state = { id, fileName, ...result.job };
       updateJob(id, state);
-      if (state.status === "review") { setActiveJobId(id); setDraft(state.draft || null); return; }
+      if (state.status === "review") { if (state.draft) setDrafts((old) => ({ ...old, [id]: state.draft! })); setActiveJobId((old) => old || id); if (!draft) setDraft(state.draft || null); return; }
       if (state.status === "failed") throw new Error(state.error || "This import failed.");
       await new Promise((resolve) => window.setTimeout(resolve, 350));
     }
@@ -40,6 +41,7 @@ export function ImportPanelV2({ subjectId }: { subjectId: string }) {
 
   async function startJobs(nextJobs: { jobId: string; fileName?: string; totalChunks?: number }[]) {
     setJobs(nextJobs.map((job) => ({ id: job.jobId, fileName: job.fileName, status: "queued", completed_chunks: 0, total_chunks: job.totalChunks || 1 })));
+    setDrafts({}); setActiveJobId("");
     setMessage("Material queued. StudyPal is processing it in small chunks…");
     for (const job of nextJobs) {
       try { await watchJob(job.jobId, job.fileName); }
@@ -70,7 +72,7 @@ export function ImportPanelV2({ subjectId }: { subjectId: string }) {
     const response = await fetch(`/api/import/jobs/${activeJobId}/approve`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ draft }) });
     const result = await response.json();
     if (!response.ok) setError(result.error || "We could not save the reviewed material.");
-    else { setMessage(`Saved ${result.saved} new questions and linked ${result.repeated} repeated appearance${result.repeated === 1 ? "" : "s"}.`); setDraft(null); setActiveJobId(""); router.refresh(); }
+    else { setMessage(`Saved ${result.saved} new questions and linked ${result.repeated} repeated appearance${result.repeated === 1 ? "" : "s"}.`); setDraft(null); setDrafts((old) => { const next = { ...old }; delete next[activeJobId]; return next; }); const nextJob = jobs.find((job) => job.id !== activeJobId && job.status === "review"); setActiveJobId(nextJob?.id || ""); if (nextJob) setDraft(drafts[nextJob.id] || null); router.refresh(); }
     setSaving(false);
   }
 
@@ -80,7 +82,7 @@ export function ImportPanelV2({ subjectId }: { subjectId: string }) {
       <label className="block"><span className="mb-2 block text-sm font-semibold">Files <span className="font-normal text-black/35">(PDF, PNG, JPG, WEBP, DOCX, TXT · 25 MB each)</span></span><input type="file" multiple accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,.txt,.md" onChange={(event) => setFiles(Array.from(event.target.files || []))} className="block w-full rounded-xl border border-dashed border-black/20 bg-[#fafaf8] px-4 py-4 text-sm" />{files.length > 0 && <p className="mt-2 text-xs text-black/45">{files.length} file{files.length === 1 ? "" : "s"} ready: {files.map((file) => file.name).join(", ")}</p>}</label>
       <label className="block"><span className="mb-2 block text-sm font-semibold">Or paste the material</span><textarea minLength={files.length ? undefined : 30} required={!files.length} value={text} onChange={(event) => setText(event.target.value)} rows={7} className="auth-input resize-y" placeholder={sourceType === "past_paper" ? "Paste the full paper text here…" : "Paste your syllabus, chapter, or notes here…"} /></label>
       {error && <p role="alert" className="rounded-xl bg-[#fff0ef] px-3 py-2.5 text-sm leading-5 text-[#a8322d]">{error}</p>}{message && <p role="status" className="rounded-xl bg-[#f0f8f1] px-3 py-2.5 text-sm leading-5 text-[#26703c]">{message}</p>}
-      {jobs.length > 0 && <div className="space-y-2 rounded-2xl bg-[#f7f7f5] p-4">{jobs.map((job) => <div key={job.id} className="flex items-center justify-between gap-3 text-sm"><span className="truncate font-semibold">{job.fileName || "Pasted material"}</span><span className="text-black/45">{job.status === "review" ? "Ready for review" : job.status === "failed" ? "Needs retry" : `${job.completed_chunks}/${job.total_chunks} chunks`}</span></div>)}</div>}
+      {jobs.length > 0 && <div className="space-y-2 rounded-2xl bg-[#f7f7f5] p-4">{jobs.map((job) => <div key={job.id} className="flex items-center justify-between gap-3 text-sm"><span className="truncate font-semibold">{job.fileName || "Pasted material"}</span>{job.status === "review" ? <button type="button" onClick={() => { setActiveJobId(job.id); setDraft(drafts[job.id] || null); }} className={`rounded-full px-3 py-1 text-xs font-bold ${activeJobId === job.id ? "bg-[#d94b45] text-white" : "bg-white text-[#a8322d]"}`}>Review</button> : <span className="text-black/45">{job.status === "failed" ? "Needs retry" : `${job.completed_chunks}/${job.total_chunks} chunks`}</span>}</div>)}</div>}
       <div className="flex items-center justify-between gap-4"><p className="text-xs leading-5 text-black/40">Long papers are processed in chunks so you can review before saving.</p><button disabled={saving} className="rounded-xl bg-[#111] px-4 py-3 text-sm font-bold text-white disabled:opacity-50">{saving ? "Processing…" : "Prepare import"}</button></div>
     </form>
     {draft && <section className="mt-8 border-t border-black/10 pt-7"><div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end"><div><p className="text-xs font-bold uppercase tracking-[0.16em] text-[#d94b45]">Review before saving</p><h3 className="mt-2 text-2xl font-bold">{draft.title}</h3></div><button onClick={approve} disabled={saving} className="rounded-xl bg-[#d94b45] px-4 py-3 text-sm font-bold text-white disabled:opacity-50">{saving ? "Saving…" : "Approve import"}</button></div><p className="mt-2 text-sm text-black/50">Check wording, answers, and flagged items. Repeated questions are linked to their previous appearances.</p><div className="mt-5 space-y-3">{draft.questions.map((question, index) => <div key={`${index}-${question.prompt}`} className="rounded-2xl border border-black/10 p-4"><div className="flex items-start justify-between gap-3"><span className="text-xs font-bold uppercase tracking-[0.12em] text-black/40">{question.question_type.replace("_", " ")} · {question.confidence >= 0.8 ? "high confidence" : "check carefully"}</span>{question.needs_review && <span className="rounded-full bg-[#fff0ef] px-2 py-1 text-[11px] font-bold text-[#a8322d]">Needs review</span>}</div><textarea value={question.prompt} onChange={(event) => updateQuestion(index, "prompt", event.target.value)} className="auth-input mt-3 min-h-20 resize-y" /><div className="mt-3 grid gap-3 sm:grid-cols-3"><input value={question.topic} onChange={(event) => updateQuestion(index, "topic", event.target.value)} className="auth-input" placeholder="Topic" /><input type="number" min={1} value={question.points} onChange={(event) => updateQuestion(index, "points", Number(event.target.value))} className="auth-input" placeholder="Points" /><input type="number" value={question.year || ""} onChange={(event) => updateQuestion(index, "year", Number(event.target.value) || 0)} className="auth-input" placeholder="Year" /></div></div>)}</div>{!draft.questions.length && <p className="mt-5 rounded-2xl bg-[#fffaf0] p-4 text-sm text-[#7a5b1b]">No questions were found. You can still approve the curriculum sections.</p>}</section>}
