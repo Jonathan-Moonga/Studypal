@@ -40,7 +40,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ qui
   if (!quiz) return NextResponse.json({ error: "Quiz not found." }, { status: 404 });
 
   const ids = Array.isArray(quiz.question_ids) ? quiz.question_ids as string[] : [];
-  const { data: questions } = await supabase.from("questions").select("id, answer, points").in("id", ids);
+  const { data: questions } = await supabase.from("questions").select("id, answer, points, question_type, subject_id").in("id", ids);
   const answers = (questions || []).map((question) => {
     const response = responses?.[question.id] ?? null;
     const isCorrect = isAnswerCorrect(question.answer, response);
@@ -51,9 +51,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ qui
     if (answersError) return NextResponse.json({ error: "We could not save your answers." }, { status: 500 });
   }
 
-  const totalPoints = (questions || []).reduce((total, question) => total + Number(question.points || 1), 0);
+  const essayQuestions = (questions || []).filter((question) => question.question_type === "essay");
+  if (essayQuestions.length) {
+    await supabase.from("essay_submissions").insert(essayQuestions.filter((question) => responses?.[question.id]).map((question) => ({ user_id: user.id, subject_id: question.subject_id, question_id: question.id, quiz_id: quizId, response: String(responses[question.id]), status: "submitted" })));
+  }
+  const scoredQuestions = (questions || []).filter((question) => question.question_type !== "essay");
+  const totalPoints = scoredQuestions.reduce((total, question) => total + Number(question.points || 1), 0);
   const earnedPoints = answers.reduce((total, answer) => total + Number(answer.points_earned), 0);
   const score = totalPoints ? Math.round((earnedPoints / totalPoints) * 100) : 0;
   await supabase.from("quiz_sessions").update({ completed_at: new Date().toISOString(), score }).eq("id", quizId).eq("user_id", user.id);
-  return NextResponse.json({ score, earnedPoints, totalPoints });
+  return NextResponse.json({ score, earnedPoints, totalPoints, pendingEssayCount: essayQuestions.length || undefined });
 }

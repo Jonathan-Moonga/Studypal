@@ -4,7 +4,7 @@ export type QuizQuestion = {
   sequence_order: number | null;
   source_id: string | null;
   section_id: string | null;
-  question_type: "multiple_choice" | "fill_blank" | "free_response";
+  question_type: "multiple_choice" | "fill_blank" | "free_response" | "essay";
 };
 
 type Attempt = { question_id: string; is_correct: boolean };

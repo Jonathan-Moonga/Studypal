@@ -24,11 +24,19 @@ export async function POST(request: Request) {
 
   const questionIds = questions.map((question) => question.id);
   const { data: attempts } = await supabase.from("quiz_answers").select("question_id, is_correct").eq("user_id", user.id).in("question_id", questionIds);
-  const selected = quizType === "topic"
+  let selected = quizType === "topic"
     ? selectTopicQuiz(questions, attempts || [], 10)
     : quizType === "section"
       ? selectSectionPractice(questions)
       : selectFullPaper(questions, sourceId || questions[0].source_id || "");
+
+  if (quizType === "full_paper" && sourceId) {
+    const { data: occurrences } = await supabase.from("question_occurrences").select("question_id, sequence_order").eq("user_id", user.id).eq("source_id", sourceId).order("sequence_order", { ascending: true, nullsFirst: false });
+    if (occurrences?.length) {
+      const byId = new Map(questions.map((question) => [question.id, question]));
+      selected = occurrences.map((occurrence) => byId.get(occurrence.question_id) ? { ...byId.get(occurrence.question_id)!, sequence_order: occurrence.sequence_order } : null).filter(Boolean) as typeof selected;
+    }
+  }
 
   if (!selected.length) return NextResponse.json({ error: "There are no questions available for this quiz yet." }, { status: 400 });
 
