@@ -46,3 +46,9 @@ npm run dev
 ```
 
 Add the Supabase URL and publishable key to `.env.local`. The initial database schema is in `supabase/migrations/20261010000000_initial_schema.sql`.
+
+## Learning platform
+
+The authenticated app includes onboarding, real Supabase-backed subjects, AI-assisted material import, curriculum sections, tagged questions, topic refreshers, timed section practice, original-order full-paper practice, answer tracking, score summaries, and a simple timetable.
+
+To enable AI parsing, add `GEMINI_API_KEY` to `.env.local`. Without it, the import screen shows a clear configuration error and does not create partial AI data.
