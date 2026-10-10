@@ -61,7 +61,7 @@ export default function LoginPage() {
         router.push("/");
         router.refresh();
       } else {
-        setMessage("Check your email to confirm your account, then come back to StudyPal.");
+        setMessage("Your account was created. You can now log in with your email and password.");
       }
     } else {
       const { error: loginError } = await supabase.auth.signInWithPassword({ email, password });
