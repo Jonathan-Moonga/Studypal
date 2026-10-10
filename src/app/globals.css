@@ -21,3 +21,24 @@ body {
 * {
   box-sizing: border-box;
 }
+
+.auth-input {
+  width: 100%;
+  border: 1px solid rgba(17, 17, 17, 0.14);
+  border-radius: 0.75rem;
+  background: #fff;
+  padding: 0.8rem 0.9rem;
+  color: #111;
+  font-size: 0.875rem;
+  outline: none;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.auth-input::placeholder {
+  color: rgba(17, 17, 17, 0.32);
+}
+
+.auth-input:focus {
+  border-color: #d94b45;
+  box-shadow: 0 0 0 3px rgba(217, 75, 69, 0.14);
+}
