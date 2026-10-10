@@ -29,13 +29,31 @@ export const extractionSchema = {
           accepted_answers: { type: "array", items: { type: "string" } },
           explanation: { type: "string" },
           points: { type: "integer" },
-          year: { type: "integer" },
+          year: { type: ["integer", "null"], description: "The year printed on the source, or null when not visible." },
           topic: { type: "string" },
           difficulty: { type: "string", enum: ["introductory", "standard", "challenging"] },
           sequence_order: { type: "integer" },
           needs_review: { type: "boolean" },
           confidence: { type: "number" },
-          rubric: { type: "object" },
+          rubric: {
+            type: ["object", "null"],
+            properties: {
+              criteria: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    name: { type: "string" },
+                    description: { type: "string" },
+                    points: { type: "number" },
+                  },
+                  required: ["name", "description", "points"],
+                },
+              },
+              total_points: { type: "number" },
+            },
+            required: ["criteria", "total_points"],
+          },
         },
         required: ["section_title", "question_type", "prompt", "choices", "answer", "accepted_answers", "explanation", "points", "year", "topic", "difficulty", "sequence_order", "needs_review", "confidence"],
       },
@@ -64,6 +82,26 @@ export type ImportQuestion = {
 
 export type ImportDraft = { title: string; sections: { title: string; description: string; topics: string[] }[]; questions: ImportQuestion[] };
 
+export const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3.8-flash";
+
+export const SUPPORTED_UPLOAD_EXTENSIONS = [
+  ".pdf", ".png", ".jpg", ".jpeg", ".webp", ".gif", ".tif", ".tiff",
+  ".docx", ".doc", ".txt", ".md", ".rtf", ".odt", ".pptx", ".ppt",
+  ".xlsx", ".xls", ".csv",
+];
+
+export function isSupportedUpload(fileName: string, mimeType = "") {
+  const lower = fileName.toLowerCase();
+  return SUPPORTED_UPLOAD_EXTENSIONS.some((extension) => lower.endsWith(extension)) ||
+    mimeType.startsWith("image/") || mimeType.startsWith("text/") || mimeType === "application/pdf";
+}
+
+export function shouldProcessAsDocument(fileName: string, mimeType: string, extractedText: string) {
+  const lower = fileName.toLowerCase();
+  return mimeType === "application/pdf" || mimeType.startsWith("image/") ||
+    (!extractedText.trim() && !lower.endsWith(".txt") && !lower.endsWith(".md") && !lower.endsWith(".csv"));
+}
+
 export function splitIntoChunks(input: string, maxLength = 12000) {
   const text = input.replace(/\r\n/g, "\n").trim();
   if (!text) return [""];
@@ -83,8 +121,11 @@ export function splitIntoChunks(input: string, maxLength = 12000) {
 }
 
 export function questionFingerprint(question: Pick<ImportQuestion, "prompt" | "question_type" | "choices">) {
-  const normalized = [question.question_type, question.prompt, ...(question.choices || []).map((choice) => `${choice.key}:${choice.text}`)]
-    .join("|").toLowerCase().replace(/\s+/g, " ").trim();
+  const canonical = (value: string) => value.normalize("NFKC").toLowerCase()
+    .replace(/^\s*(?:question\s*)?\d+[a-z]?(?:\s*[.):\-]|\s+)+/i, "")
+    .replace(/[[(]\s*\d+\s*marks?\s*[\])]\s*$/i, "")
+    .replace(/[^\p{L}\p{N}+\-=/]+/gu, " ").replace(/\s+/g, " ").trim();
+  const normalized = [canonical(question.question_type), canonical(question.prompt), ...(question.choices || []).map((choice) => canonical(choice.text))].join("|");
   return crypto.createHash("sha256").update(normalized).digest("hex");
 }
 
@@ -111,27 +152,49 @@ export async function extractFileText(file: File) {
   const buffer = Buffer.from(await file.arrayBuffer());
   if (file.type === "text/plain" || file.name.toLowerCase().endsWith(".txt") || file.name.toLowerCase().endsWith(".md")) return { text: buffer.toString("utf8"), buffer };
   if (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) {
-    const pdfModule = await import("pdf-parse");
-    const parser = (pdfModule as unknown as { default?: (data: Buffer) => Promise<{ text: string }> }).default || (pdfModule as unknown as (data: Buffer) => Promise<{ text: string }>);
-    return { text: (await parser(buffer)).text, buffer };
+    const pdfModule = await import("pdf-parse") as unknown as { PDFParse: new (options: { data: Buffer }) => { getText: () => Promise<{ text: string }>; destroy: () => Promise<void> } };
+    const parser = new pdfModule.PDFParse({ data: buffer });
+    try { return { text: (await parser.getText()).text, buffer }; }
+    finally { await parser.destroy(); }
   }
-  if (file.type.includes("word") || file.name.toLowerCase().endsWith(".docx")) {
+  if (file.name.toLowerCase().endsWith(".docx") || file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
     const mammoth = await import("mammoth");
     return { text: (await mammoth.extractRawText({ buffer })).value, buffer };
   }
   return { text: "", buffer };
 }
 
-export async function callGemini(prompt: string, image?: { mimeType: string; data: string }) {
+type GeminiFile = { mimeType: string; data: string };
+
+function geminiErrorMessage(status: number, payload: unknown) {
+  const raw = typeof payload === "object" && payload && "error" in payload
+    ? String((payload as { error?: { message?: string } }).error?.message || "")
+    : "";
+  if (status === 400) return `Gemini rejected this file or request${raw ? `: ${raw}` : "."}`;
+  if (status === 401 || status === 403) return "The Gemini API key is missing, invalid, or does not have access to this model.";
+  if (status === 413) return "This document is too large for one Gemini request.";
+  if (status === 429) return "Gemini is busy or the project has reached its quota. Wait a moment, then retry.";
+  return `Gemini could not process this material (HTTP ${status})${raw ? `: ${raw}` : "."}`;
+}
+
+export async function callGemini(prompt: string, file?: GeminiFile, useSearch = false) {
   if (!process.env.GEMINI_API_KEY) throw new Error("AI importing is not configured yet.");
   const parts: { text?: string; inlineData?: { mimeType: string; data: string } }[] = [{ text: prompt }];
-  if (image) parts.push({ inlineData: image });
-  const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent", {
+  if (file) parts.push({ inlineData: file });
+  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`, {
     method: "POST", headers: { "Content-Type": "application/json", "x-goog-api-key": process.env.GEMINI_API_KEY },
-    body: JSON.stringify({ contents: [{ parts }], generationConfig: { responseFormat: { text: { mimeType: "application/json", schema: extractionSchema } } } }),
+    body: JSON.stringify({
+      contents: [{ parts }],
+      ...(useSearch ? { tools: [{ googleSearch: {} }] } : {}),
+      generationConfig: {
+        responseFormat: { text: { mimeType: "application/json", schema: extractionSchema } },
+        thinkingConfig: { thinkingLevel: "low" },
+      },
+    }),
   });
-  if (!response.ok) throw new Error(`Gemini request failed with ${response.status}`);
-  const payload = await response.json();
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(geminiErrorMessage(response.status, payload));
   const text = payload.candidates?.[0]?.content?.parts?.map((part: { text?: string }) => part.text || "").join("") || "";
+  if (!text.trim()) throw new Error("Gemini returned no extractable content for this file.");
   return normalizeDraft(parseModelJson(text));
 }

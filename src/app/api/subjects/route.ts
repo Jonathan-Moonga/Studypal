@@ -15,3 +15,19 @@ export async function POST(request: Request) {
   if (error) return NextResponse.json({ error: "That subject could not be created." }, { status: 500 });
   return NextResponse.json({ subject: data });
 }
+
+export async function PATCH(request: Request) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Please log in to update an exam date." }, { status: 401 });
+  const body = await request.json().catch(() => ({}));
+  const subjectId = String(body.subjectId || "");
+  const examDate = body.examDate ? String(body.examDate) : null;
+  const examTime = body.examTime ? String(body.examTime) : null;
+  const examPaper = body.examPaper ? String(body.examPaper).trim().slice(0, 120) : null;
+  if (!subjectId) return NextResponse.json({ error: "Choose a subject first." }, { status: 400 });
+  if (examDate && !/^\d{4}-\d{2}-\d{2}$/.test(examDate)) return NextResponse.json({ error: "Enter a valid exam date." }, { status: 400 });
+  const { data, error } = await supabase.from("subjects").update({ exam_date: examDate, exam_time: examTime, exam_paper: examPaper }).eq("id", subjectId).eq("user_id", user.id).select("id, exam_date, exam_time, exam_paper").single();
+  if (error || !data) return NextResponse.json({ error: "We could not update that exam date." }, { status: 500 });
+  return NextResponse.json({ subject: data });
+}

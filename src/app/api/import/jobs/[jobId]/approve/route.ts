@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { questionFingerprint, type ImportDraft, type ImportQuestion } from "@/lib/import-utils";
+import { GEMINI_MODEL, normalizeDraft, questionFingerprint, type ImportDraft, type ImportQuestion } from "@/lib/import-utils";
 
 export async function POST(request: Request, { params }: { params: Promise<{ jobId: string }> }) {
   const { jobId } = await params;
@@ -11,11 +11,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ job
   const { data: job } = await supabase.from("import_jobs").select("id, source_id, subject_id, exam_key, status, draft").eq("id", jobId).eq("user_id", user.id).single();
   if (!job) return NextResponse.json({ error: "Import job not found." }, { status: 404 });
   if (job.status !== "review") return NextResponse.json({ error: "This import is not ready for review yet." }, { status: 409 });
-  const draft = (body.draft || job.draft) as ImportDraft;
-  const sectionRows = (draft.sections || []).map((section, index) => ({ user_id: user.id, subject_id: job.subject_id, title: String(section.title).slice(0, 180), description: section.description || null, topics: section.topics || [], position: index }));
+  const draft = normalizeDraft((body.draft || job.draft) as ImportDraft);
+  if (!draft.questions.length && !draft.sections.length) return NextResponse.json({ error: "There is nothing to save in this import." }, { status: 400 });
+  const { data: existingSections } = await supabase.from("curriculum_sections").select("id, title").eq("subject_id", job.subject_id).eq("user_id", user.id);
+  const existingTitles = new Set((existingSections || []).map((section) => section.title.toLowerCase()));
+  const sectionRows = (draft.sections || []).filter((section) => !existingTitles.has(String(section.title).toLowerCase())).map((section, index) => ({ user_id: user.id, subject_id: job.subject_id, title: String(section.title).slice(0, 180), description: section.description || null, topics: section.topics || [], position: (existingSections?.length || 0) + index }));
   const { data: savedSections, error: sectionError } = sectionRows.length ? await supabase.from("curriculum_sections").insert(sectionRows).select("id, title") : { data: [], error: null };
   if (sectionError) return NextResponse.json({ error: "We could not save the reviewed sections." }, { status: 500 });
-  const sectionIds = new Map((savedSections || []).map((section) => [section.title.toLowerCase(), section.id]));
+  const sectionIds = new Map([...(existingSections || []), ...(savedSections || [])].map((section) => [section.title.toLowerCase(), section.id]));
   const sourceLabel = String((draft.title || "Imported source")).slice(0, 180);
   let saved = 0;
   let repeated = 0;
@@ -36,6 +39,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ job
     }
   }
   await supabase.from("import_jobs").update({ status: "approved", draft, updated_at: new Date().toISOString() }).eq("id", jobId).eq("user_id", user.id);
-  await supabase.from("content_sources").update({ status: "ready", metadata: { sections: sectionRows.length, questions: saved, repeated, model: "gemini-2.5-flash" }, updated_at: new Date().toISOString() }).eq("id", job.source_id).eq("user_id", user.id);
+  await supabase.from("content_sources").update({ status: "ready", metadata: { sections: sectionRows.length, questions: saved, repeated, model: GEMINI_MODEL }, updated_at: new Date().toISOString() }).eq("id", job.source_id).eq("user_id", user.id);
   return NextResponse.json({ saved, repeated, sections: sectionRows.length });
 }
