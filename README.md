@@ -34,3 +34,15 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## StudyPal setup
+
+The project uses Next.js 16, TypeScript, Tailwind CSS, and Supabase.
+
+```bash
+npm install
+copy .env.example .env.local
+npm run dev
+```
+
+Add the Supabase URL and publishable key to `.env.local`. The initial database schema is in `supabase/migrations/20261010000000_initial_schema.sql`.
