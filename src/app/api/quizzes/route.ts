@@ -15,8 +15,12 @@ export async function POST(request: Request) {
 
   if (!subjectId || !["topic", "section", "full_paper"].includes(quizType)) return NextResponse.json({ error: "Choose a valid subject and quiz type." }, { status: 400 });
 
+  // A question repeated across years is stored once, so a paper's questions come from its occurrences.
+  const { data: occurrences } = quizType === "full_paper" && sourceId
+    ? await supabase.from("question_occurrences").select("question_id, sequence_order").eq("user_id", user.id).eq("source_id", sourceId).order("sequence_order", { ascending: true, nullsFirst: false })
+    : { data: null };
   let questionQuery = supabase.from("questions").select("id, topic, sequence_order, source_id, section_id, question_type").eq("user_id", user.id).eq("subject_id", subjectId);
-  if (quizType === "full_paper" && sourceId) questionQuery = questionQuery.eq("source_id", sourceId);
+  if (quizType === "full_paper" && sourceId) questionQuery = occurrences?.length ? questionQuery.in("id", [...new Set(occurrences.map((row) => row.question_id))]) : questionQuery.eq("source_id", sourceId);
   if (quizType !== "full_paper" && sectionId) questionQuery = questionQuery.eq("section_id", sectionId);
   const { data: questions, error: questionError } = await questionQuery;
   if (questionError) return NextResponse.json({ error: "We could not load questions for this quiz." }, { status: 500 });
@@ -30,18 +34,20 @@ export async function POST(request: Request) {
       ? selectSectionPractice(questions)
       : selectFullPaper(questions, sourceId || questions[0].source_id || "");
 
-  if (quizType === "full_paper" && sourceId) {
-    const { data: occurrences } = await supabase.from("question_occurrences").select("question_id, sequence_order").eq("user_id", user.id).eq("source_id", sourceId).order("sequence_order", { ascending: true, nullsFirst: false });
-    if (occurrences?.length) {
-      const byId = new Map(questions.map((question) => [question.id, question]));
-      selected = occurrences.map((occurrence) => byId.get(occurrence.question_id) ? { ...byId.get(occurrence.question_id)!, sequence_order: occurrence.sequence_order } : null).filter(Boolean) as typeof selected;
-    }
+  if (quizType === "full_paper" && sourceId && occurrences?.length) {
+    const byId = new Map(questions.map((question) => [question.id, question]));
+    selected = occurrences.map((occurrence) => byId.get(occurrence.question_id) ? { ...byId.get(occurrence.question_id)!, sequence_order: occurrence.sequence_order } : null).filter(Boolean) as typeof selected;
   }
 
   if (!selected.length) return NextResponse.json({ error: "There are no questions available for this quiz yet." }, { status: 400 });
 
-  const durationSeconds = durationForQuiz(quizType, selected.length);
-  const title = quizType === "topic" ? "Topic refresher" : quizType === "section" ? "Section practice" : "Full paper practice";
+  // Full papers use the time printed on the original cover when the importer recorded it.
+  const { data: paper } = quizType === "full_paper" && sourceId
+    ? await supabase.from("content_sources").select("title, metadata").eq("id", sourceId).eq("user_id", user.id).maybeSingle()
+    : { data: null };
+  const printedMinutes = Number((paper?.metadata as { duration_minutes?: number } | null)?.duration_minutes) || 0;
+  const durationSeconds = printedMinutes > 0 ? printedMinutes * 60 : durationForQuiz(quizType, selected.length);
+  const title = quizType === "topic" ? "Topic refresher" : quizType === "section" ? "Section practice" : paper?.title || "Full paper practice";
   const { data: quiz, error: quizError } = await supabase.from("quiz_sessions").insert({
     user_id: user.id,
     subject_id: subjectId,

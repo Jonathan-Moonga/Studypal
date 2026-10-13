@@ -6,7 +6,14 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "ecz:discover": "node scripts/ecz-corpus.mjs discover",
+    "ecz:download": "node scripts/ecz-corpus.mjs download",
+    "ecz:verify": "node scripts/ecz-corpus.mjs verify",
+    "ecz:register": "node scripts/ecz-corpus.mjs register",
+    "ecz:process": "node scripts/ecz-corpus.mjs process",
+    "ecz:audit": "node scripts/ecz-corpus.mjs audit",
+    "ecz:approve": "node scripts/ecz-corpus.mjs approve"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
@@ -24,6 +31,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.4.0",
+    "pdf-lib": "^1.17.1",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
