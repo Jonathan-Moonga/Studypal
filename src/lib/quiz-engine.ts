@@ -27,7 +27,7 @@ function stableShuffle<T>(items: T[], seed: string) {
   });
 }
 
-export function selectTopicQuiz(questions: QuizQuestion[], attempts: Attempt[], count = 10) {
+export function selectTopicQuiz(questions: QuizQuestion[], attempts: Attempt[], count = 10, variant = "A") {
   // Topic practice favors weak and unseen questions while keeping the set varied.
   const ranked = [...questions].sort((a, b) => questionPriority(b, attempts) - questionPriority(a, attempts));
   const byTopic = new Map<string, QuizQuestion[]>();
@@ -37,7 +37,7 @@ export function selectTopicQuiz(questions: QuizQuestion[], attempts: Attempt[], 
   });
 
   const selected: QuizQuestion[] = [];
-  const topicQueues = [...byTopic.values()].map((queue) => stableShuffle(queue, "topic"));
+  const topicQueues = [...byTopic.values()].map((queue) => stableShuffle(queue, `topic:${variant}`));
   while (selected.length < Math.min(count, questions.length) && topicQueues.length) {
     for (const queue of topicQueues) {
       const next = queue.shift();
@@ -49,6 +49,17 @@ export function selectTopicQuiz(questions: QuizQuestion[], attempts: Attempt[], 
     }
   }
   return selected;
+}
+
+export function selectAssessmentVariant(questions: QuizQuestion[], variant = "A", count = 20) {
+  if (!questions.length) return [];
+  const variants = ["A", "B", "C", "D"];
+  const variantIndex = Math.max(0, variants.indexOf(variant));
+  const shuffled = stableShuffle(questions, `assessment:${variant}`);
+  const target = Math.min(count, shuffled.length);
+  if (shuffled.length >= target * variants.length) return shuffled.slice(variantIndex * target, (variantIndex + 1) * target);
+  // Smaller banks still get four reproducible versions, with a rotated order.
+  return Array.from({ length: target }, (_, index) => shuffled[(index + variantIndex) % shuffled.length]);
 }
 
 export function selectSectionPractice(questions: QuizQuestion[]) {
@@ -63,8 +74,9 @@ export function selectFullPaper(questions: QuizQuestion[], sourceId: string) {
     .sort((a, b) => (a.sequence_order ?? 0) - (b.sequence_order ?? 0));
 }
 
-export function durationForQuiz(type: "topic" | "section" | "full_paper", questionCount: number) {
-  if (type === "topic") return Math.max(8 * 60, questionCount * 90);
+export function durationForQuiz(type: "topic" | "section" | "full_paper" | "unit_test", questionCount: number) {
+  if (type === "topic") return Math.max(8 * 60, questionCount * 75);
   if (type === "section") return Math.max(20 * 60, questionCount * 90);
+  if (type === "unit_test") return Math.max(45 * 60, questionCount * 120);
   return Math.max(45 * 60, questionCount * 90);
 }

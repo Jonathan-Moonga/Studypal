@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { durationForQuiz, selectFullPaper, selectSectionPractice, selectTopicQuiz } from "@/lib/quiz-engine";
+import { durationForQuiz, selectAssessmentVariant, selectFullPaper, selectSectionPractice, selectTopicQuiz } from "@/lib/quiz-engine";
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -12,6 +12,8 @@ export async function POST(request: Request) {
   const subjectId = String(body.subjectId || "");
   const sectionId = body.sectionId ? String(body.sectionId) : null;
   const sourceId = body.sourceId ? String(body.sourceId) : null;
+  const assessmentType = body.assessmentType === "unit_test" ? "unit_test" : body.assessmentType === "quiz" ? "quiz" : quizType;
+  const variant = ["A", "B", "C", "D"].includes(String(body.variant)) ? String(body.variant) : "A";
 
   if (!subjectId || !["topic", "section", "full_paper"].includes(quizType)) return NextResponse.json({ error: "Choose a valid subject and quiz type." }, { status: 400 });
 
@@ -29,9 +31,11 @@ export async function POST(request: Request) {
   const questionIds = questions.map((question) => question.id);
   const { data: attempts } = await supabase.from("quiz_answers").select("question_id, is_correct").eq("user_id", user.id).in("question_id", questionIds);
   let selected = quizType === "topic"
-    ? selectTopicQuiz(questions, attempts || [], 10)
-    : quizType === "section"
-      ? selectSectionPractice(questions)
+    ? selectTopicQuiz(questions, attempts || [], 12, variant)
+    : assessmentType === "unit_test"
+      ? selectAssessmentVariant(questions, variant, Math.min(30, Math.max(12, questions.length)))
+      : quizType === "section"
+        ? selectSectionPractice(questions)
       : selectFullPaper(questions, sourceId || questions[0].source_id || "");
 
   if (quizType === "full_paper" && sourceId && occurrences?.length) {
@@ -46,8 +50,8 @@ export async function POST(request: Request) {
     ? await supabase.from("content_sources").select("title, metadata").eq("id", sourceId).eq("user_id", user.id).maybeSingle()
     : { data: null };
   const printedMinutes = Number((paper?.metadata as { duration_minutes?: number } | null)?.duration_minutes) || 0;
-  const durationSeconds = printedMinutes > 0 ? printedMinutes * 60 : durationForQuiz(quizType, selected.length);
-  const title = quizType === "topic" ? "Topic refresher" : quizType === "section" ? "Section practice" : paper?.title || "Full paper practice";
+  const durationSeconds = printedMinutes > 0 ? printedMinutes * 60 : durationForQuiz(assessmentType === "unit_test" ? "unit_test" : quizType, selected.length);
+  const title = quizType === "topic" ? `Biology quiz ${variant}` : assessmentType === "unit_test" ? `Biology unit test ${variant}` : quizType === "section" ? "Section practice" : paper?.title || "Full paper practice";
   const { data: quiz, error: quizError } = await supabase.from("quiz_sessions").insert({
     user_id: user.id,
     subject_id: subjectId,
@@ -57,7 +61,7 @@ export async function POST(request: Request) {
     title,
     question_ids: selected.map((question) => question.id),
     duration_seconds: durationSeconds,
-    metadata: { selection_algorithm: quizType === "topic" ? "weakness_balanced_topic_rotation" : quizType === "section" ? "curriculum_order" : "source_order" },
+    metadata: { selection_algorithm: quizType === "topic" ? "weakness_balanced_topic_rotation" : assessmentType === "unit_test" ? "assessment_variant_rotation" : quizType === "section" ? "curriculum_order" : "source_order", assessment_type: assessmentType, variant },
   }).select("id, title, quiz_type, duration_seconds").single();
 
   if (quizError) return NextResponse.json({ error: "We could not start this quiz." }, { status: 500 });

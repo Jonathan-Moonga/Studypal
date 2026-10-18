@@ -18,7 +18,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ qui
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Please log in to view this quiz." }, { status: 401 });
 
-  const { data: quiz, error: quizError } = await supabase.from("quiz_sessions").select("id, title, quiz_type, duration_seconds, question_ids, completed_at, score").eq("id", quizId).eq("user_id", user.id).single();
+  const { data: quiz, error: quizError } = await supabase.from("quiz_sessions").select("id, subject_id, title, quiz_type, duration_seconds, question_ids, completed_at, score").eq("id", quizId).eq("user_id", user.id).single();
   if (quizError || !quiz) return NextResponse.json({ error: "Quiz not found." }, { status: 404 });
 
   const ids = Array.isArray(quiz.question_ids) ? quiz.question_ids as string[] : [];
@@ -68,7 +68,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ qui
   if (!quiz) return NextResponse.json({ error: "Quiz not found." }, { status: 404 });
 
   const ids = Array.isArray(quiz.question_ids) ? quiz.question_ids as string[] : [];
-  const { data: questions } = await supabase.from("questions").select("id, answer, points, question_type, subject_id, choices, explanation, metadata").in("id", ids);
+  const { data: questions } = await supabase.from("questions").select("id, answer, points, question_type, subject_id, section_id, topic, choices, explanation, metadata").in("id", ids);
+  const sectionIds = [...new Set((questions || []).map((question) => question.section_id).filter((value): value is string => Boolean(value)))];
+  const { data: sections } = sectionIds.length ? await supabase.from("curriculum_sections").select("id, title").in("id", sectionIds).eq("user_id", user.id) : { data: [] };
+  const sectionTitles = new Map((sections || []).map((section) => [section.id, section.title]));
   const answers = (questions || []).map((question) => {
     const response = responses?.[question.id] ?? null;
     const isCorrect = isAnswerCorrect(question.answer, response);
@@ -100,7 +103,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ qui
     const key = Array.isArray(question.answer) ? question.answer.join(" / ") : String(question.answer || "");
     const choice = choices.find((item) => item.key === key);
     return { questionId: question.id, correct: scoredIds.has(question.id) ? answers.find((answer) => answer.question_id === question.id)?.is_correct ?? false : null,
-      response: responses?.[question.id] ?? null, answer: choice ? `${choice.key}. ${choice.text}` : key || null, modelAnswer: meta.model_answer || null, explanation: question.explanation || null };
+      response: responses?.[question.id] ?? null, answer: choice ? `${choice.key}. ${choice.text}` : key || null, modelAnswer: meta.model_answer || null, explanation: question.explanation || null,
+      answerSource: [meta.answer_source === "marking_scheme" ? "Official ECZ marking scheme" : meta.answer_source === "worked" ? "Worked answer (not an official ECZ key)" : null, question.section_id ? `Study section: ${sectionTitles.get(question.section_id) || "Review the matching Biology section"}` : null].filter(Boolean).join(" · ") || null,
+      sectionId: question.section_id || null, sectionTitle: question.section_id ? sectionTitles.get(question.section_id) || null : null, topic: question.topic || null };
   });
   return NextResponse.json({ score, earnedPoints, totalPoints, pendingEssayCount: essayQuestions.length || undefined, unmarkedCount: unmarkedCount || undefined, aiKeyedCount: aiKeyedCount || undefined, review });
 }

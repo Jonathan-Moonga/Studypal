@@ -54,6 +54,8 @@ export const extractionSchema = {
             },
             required: ["criteria", "total_points"],
           },
+          assessment_type: { type: "string", enum: ["notes", "quiz", "unit_test", "past_paper", "practice_set"] },
+          assessment_version: { type: "string" },
         },
         required: ["section_title", "question_type", "prompt", "choices", "answer", "accepted_answers", "explanation", "points", "year", "topic", "difficulty", "sequence_order", "needs_review", "confidence"],
       },
@@ -78,6 +80,8 @@ export type ImportQuestion = {
   needs_review: boolean;
   confidence: number;
   rubric?: Record<string, unknown>;
+  assessment_type?: "notes" | "quiz" | "unit_test" | "past_paper" | "practice_set";
+  assessment_version?: string;
 };
 
 export type ImportDraft = { title: string; sections: { title: string; description: string; topics: string[] }[]; questions: ImportQuestion[] };
@@ -143,7 +147,7 @@ export function normalizeDraft(value: Partial<ImportDraft>, sequenceOffset = 0):
     questions: questions.filter((question) => String(question.prompt || "").trim()).map((question, index) => ({
       section_title: String(question.section_title || "General section"),
       question_type: ["multiple_choice", "fill_blank", "free_response", "essay"].includes(String(question.question_type)) ? question.question_type as ImportQuestion["question_type"] : "free_response",
-      prompt: String(question.prompt).trim(), choices: Array.isArray(question.choices) ? question.choices : [], answer: String(question.answer || ""), accepted_answers: Array.isArray(question.accepted_answers) ? question.accepted_answers.map(String) : [], explanation: String(question.explanation || ""), points: Math.max(1, Number(question.points || 1)), year: Number.isFinite(Number(question.year)) && Number(question.year) > 0 ? Number(question.year) : null, topic: String(question.topic || ""), difficulty: ["introductory", "standard", "challenging"].includes(String(question.difficulty)) ? question.difficulty as ImportQuestion["difficulty"] : "standard", sequence_order: Number.isFinite(Number(question.sequence_order)) ? Number(question.sequence_order) + sequenceOffset : index + sequenceOffset, needs_review: Boolean(question.needs_review), confidence: Math.min(1, Math.max(0, Number(question.confidence ?? 0.7))), rubric: question.rubric,
+      prompt: String(question.prompt).trim(), choices: Array.isArray(question.choices) ? question.choices : [], answer: String(question.answer || ""), accepted_answers: Array.isArray(question.accepted_answers) ? question.accepted_answers.map(String) : [], explanation: String(question.explanation || ""), points: Math.max(1, Number(question.points || 1)), year: Number.isFinite(Number(question.year)) && Number(question.year) > 0 ? Number(question.year) : null, topic: String(question.topic || ""), difficulty: ["introductory", "standard", "challenging"].includes(String(question.difficulty)) ? question.difficulty as ImportQuestion["difficulty"] : "standard", sequence_order: Number.isFinite(Number(question.sequence_order)) ? Number(question.sequence_order) + sequenceOffset : index + sequenceOffset, needs_review: Boolean(question.needs_review), confidence: Math.min(1, Math.max(0, Number(question.confidence ?? 0.7))), rubric: question.rubric, assessment_type: question.assessment_type, assessment_version: question.assessment_version,
     })),
   };
 }
