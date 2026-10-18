@@ -163,7 +163,12 @@ async function readSources() {
     hashes.add(sha);
     const safe = item.name.replace(/[^a-z0-9._-]+/gi, "_").replace(/_+/g, "_");
     const extracted = JSON.parse(await fs.readFile(path.join(EXTRACTED_DIR, `${safe}.json`), "utf8"));
-    result.push({ ...item, path: sourcePath, ...extracted, sha, buffer });
+    let ocr = null;
+    try {
+      ocr = JSON.parse(await fs.readFile(path.join(ROOT, "tmp/pdfs/biology-ocr", `${safe}.json`), "utf8"));
+    } catch {}
+    const pages = ocr?.pages?.length ? ocr.pages : (extracted.pages || []);
+    result.push({ ...item, path: sourcePath, ...extracted, pages, text: pages.map((page) => page.text || "").join("\n"), extraction: ocr?.extraction || null, ocr_engine: ocr?.ocr_engine || null, sha, buffer });
   }
   return result;
 }
@@ -204,8 +209,21 @@ async function main() {
   if (old.error) throw old.error;
   const oldIds = (old.data || []).map((row) => row.id);
   if (oldIds.length) {
-    await supabase.from("questions").delete().in("source_id", oldIds);
-    await supabase.from("content_sources").delete().in("id", oldIds);
+    const oldIdSet = new Set(oldIds);
+    const oldQuestions = await supabase.from("questions").select("id,source_id").eq("user_id", subject.user_id).eq("subject_id", subject.id);
+    if (oldQuestions.error) throw oldQuestions.error;
+    const oldQuestionIds = (oldQuestions.data || []).filter((row) => oldIdSet.has(row.source_id)).map((row) => row.id);
+    for (let index = 0; index < oldQuestionIds.length; index += 100) {
+      const batch = oldQuestionIds.slice(index, index + 100);
+      const occurrenceDelete = await supabase.from("question_occurrences").delete().in("question_id", batch);
+      if (occurrenceDelete.error) throw occurrenceDelete.error;
+      const questionDelete = await supabase.from("questions").delete().in("id", batch);
+      if (questionDelete.error) throw questionDelete.error;
+    }
+    for (let index = 0; index < oldIds.length; index += 100) {
+      const sourceDelete = await supabase.from("content_sources").delete().in("id", oldIds.slice(index, index + 100));
+      if (sourceDelete.error) throw sourceDelete.error;
+    }
   }
 
   const sourceRows = [];
@@ -222,7 +240,7 @@ async function main() {
       } else storedPath = storagePath;
     }
     const fullText = source.pages.map((page) => page.text).join("\n\n");
-    sourceRows.push({ user_id: subject.user_id, subject_id: subject.id, source_type: /G12 Biology/i.test(source.name) || /Exam questions/i.test(source.name) ? "past_paper" : "textbook", title: source.name.slice(0, 180), raw_text: fullText, status: "ready", file_name: source.name, mime_type: "application/pdf", storage_path: storedPath, metadata: { biology_seed_version: VERSION, biology_source: true, sha256: source.sha, page_count: source.pages.length, extracted_page_count: source.pages.filter((page) => page.text.trim()).length, extraction: source.pages.some((page) => page.text.trim()) ? "pdf_text" : "source_pdf_only", storage_error: storageError } });
+    sourceRows.push({ user_id: subject.user_id, subject_id: subject.id, source_type: /G12 Biology/i.test(source.name) || /Exam questions/i.test(source.name) ? "past_paper" : "textbook", title: source.name.slice(0, 180), raw_text: fullText, status: "ready", file_name: source.name, mime_type: "application/pdf", storage_path: storedPath, metadata: { biology_seed_version: VERSION, biology_source: true, sha256: source.sha, page_count: source.pages.length, extracted_page_count: source.pages.filter((page) => page.text.trim()).length, extraction: source.extraction || (source.pages.some((page) => page.text.trim()) ? "pdf_text" : "source_pdf_only"), ocr_engine: source.ocr_engine, storage_error: storageError } });
   }
   const { data: createdSources, error: sourceError } = await supabase.from("content_sources").insert(sourceRows).select("id,title,storage_path,metadata");
   if (sourceError) throw sourceError;

@@ -3,14 +3,15 @@
 import { useMemo, useState } from "react";
 import Image from "next/image";
 import { BIOLOGY_SOURCE_LIBRARY, GRADE12_BIOLOGY_UNITS, type BiologyUnit } from "@/lib/biology-curriculum";
+import { dedupeBiologySources } from "@/lib/biology-dedupe";
 
-type Source = { id: string; title: string; source_type: string; status: string; metadata?: Record<string, unknown> | null };
+type Source = { id: string; title: string; source_type: string; status: string; created_at?: string | null; metadata?: Record<string, unknown> | null };
 
 export function BiologyStudyHub({ sources = [] }: { sources?: Source[] }) {
   const [query, setQuery] = useState("");
   const [openUnit, setOpenUnit] = useState("unit-1");
   const [message, setMessage] = useState("");
-  const sourceLibrary = sources.filter((source) => Boolean(source.metadata && (source.metadata as Record<string, unknown>).biology_source));
+  const sourceLibrary = dedupeBiologySources(sources.filter((source) => Boolean(source.metadata && (source.metadata as Record<string, unknown>).biology_source)));
   const visibleSources = sourceLibrary.length ? sourceLibrary : BIOLOGY_SOURCE_LIBRARY.map((source, index) => ({ id: `static-${index}`, title: source.name, source_type: "textbook", status: "ready", metadata: { summary: source.summary, pages: source.pages } }));
 
   const filteredUnits = useMemo(() => {

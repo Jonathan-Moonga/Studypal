@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { durationForQuiz, selectAssessmentVariant, selectFullPaper, selectSectionPractice, selectTopicQuiz } from "@/lib/quiz-engine";
+import { dedupeBiologyQuestions } from "@/lib/biology-dedupe";
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -21,25 +22,26 @@ export async function POST(request: Request) {
   const { data: occurrences } = quizType === "full_paper" && sourceId
     ? await supabase.from("question_occurrences").select("question_id, sequence_order").eq("user_id", user.id).eq("source_id", sourceId).order("sequence_order", { ascending: true, nullsFirst: false })
     : { data: null };
-  let questionQuery = supabase.from("questions").select("id, topic, sequence_order, source_id, section_id, question_type").eq("user_id", user.id).eq("subject_id", subjectId);
+  let questionQuery = supabase.from("questions").select("id, topic, sequence_order, source_id, section_id, question_type, prompt, choices, metadata, created_at").eq("user_id", user.id).eq("subject_id", subjectId);
   if (quizType === "full_paper" && sourceId) questionQuery = occurrences?.length ? questionQuery.in("id", [...new Set(occurrences.map((row) => row.question_id))]) : questionQuery.eq("source_id", sourceId);
   if (quizType !== "full_paper" && sectionId) questionQuery = questionQuery.eq("section_id", sectionId);
   const { data: questions, error: questionError } = await questionQuery;
   if (questionError) return NextResponse.json({ error: "We could not load questions for this quiz." }, { status: 500 });
-  if (!questions?.length) return NextResponse.json({ error: "Add a syllabus or past paper first so StudyPal has questions to use." }, { status: 400 });
+  const usableQuestions = quizType === "full_paper" ? (questions || []) : dedupeBiologyQuestions(questions || []);
+  if (!usableQuestions.length) return NextResponse.json({ error: "Add a syllabus or past paper first so StudyPal has questions to use." }, { status: 400 });
 
-  const questionIds = questions.map((question) => question.id);
+  const questionIds = usableQuestions.map((question) => question.id);
   const { data: attempts } = await supabase.from("quiz_answers").select("question_id, is_correct").eq("user_id", user.id).in("question_id", questionIds);
   let selected = quizType === "topic"
-    ? selectTopicQuiz(questions, attempts || [], 12, variant)
+    ? selectTopicQuiz(usableQuestions, attempts || [], 12, variant)
     : assessmentType === "unit_test"
-      ? selectAssessmentVariant(questions, variant, Math.min(30, Math.max(12, questions.length)))
+      ? selectAssessmentVariant(usableQuestions, variant, Math.min(30, Math.max(12, usableQuestions.length)))
       : quizType === "section"
-        ? selectSectionPractice(questions)
-      : selectFullPaper(questions, sourceId || questions[0].source_id || "");
+        ? selectSectionPractice(usableQuestions)
+      : selectFullPaper(usableQuestions, sourceId || usableQuestions[0].source_id || "");
 
   if (quizType === "full_paper" && sourceId && occurrences?.length) {
-    const byId = new Map(questions.map((question) => [question.id, question]));
+    const byId = new Map(usableQuestions.map((question) => [question.id, question]));
     selected = occurrences.map((occurrence) => byId.get(occurrence.question_id) ? { ...byId.get(occurrence.question_id)!, sequence_order: occurrence.sequence_order } : null).filter(Boolean) as typeof selected;
   }
 

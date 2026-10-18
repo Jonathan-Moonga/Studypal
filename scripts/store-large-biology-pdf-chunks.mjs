@@ -34,8 +34,10 @@ for (let start = 0; start < pdf.getPageCount(); start += pageSize) {
   if (upload.error) throw upload.error;
   paths.push({ storagePath, firstPage: start + 1, lastPage: end, bytes: bytes.length });
 }
-const { data: source, error: sourceError } = await supabase.from("content_sources").select("id,metadata").eq("subject_id", subjectId).eq("title", "BIOLOGY_KNOW EXAMINERS_MIND.pdf").single();
+const { data: sources, error: sourceError } = await supabase.from("content_sources").select("id,metadata,created_at").eq("subject_id", subjectId).eq("title", "BIOLOGY_KNOW EXAMINERS_MIND.pdf").order("created_at", { ascending: false });
 if (sourceError) throw sourceError;
+const source = sources?.[0];
+if (!source) throw new Error("The Biology source row was not found.");
 const { error: updateError } = await supabase.from("content_sources").update({ storage_path: paths[0]?.storagePath || null, metadata: { ...(source.metadata || {}), storage_chunks: paths, storage_error: null } }).eq("id", source.id);
 if (updateError) throw updateError;
 console.log(JSON.stringify({ source: source.id, chunks: paths }, null, 2));

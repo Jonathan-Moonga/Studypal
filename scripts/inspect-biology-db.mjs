@@ -15,12 +15,12 @@ const { data, error } = await supabase.from("subjects").select("id,user_id,name,
 if (error) throw error;
 for (const subject of data || []) {
   const [{ count: sources }, { count: notes }, { count: questions }, { count: graded }, { count: tagged }, { count: unitOneNotes, error: notesFilterError }] = await Promise.all([
-    supabase.from("content_sources").select("id", { count: "exact", head: true }).eq("subject_id", subject.id).contains("metadata", { biology_seed_version: "biology-seed-v1" }),
-    supabase.from("content_sources").select("id", { count: "exact", head: true }).eq("subject_id", subject.id).contains("metadata", { biology_material: true }),
-    supabase.from("questions").select("id", { count: "exact", head: true }).eq("subject_id", subject.id).contains("metadata", { biology_seed_version: "biology-seed-v1" }),
-    supabase.from("questions").select("id", { count: "exact", head: true }).eq("subject_id", subject.id).contains("metadata", { biology_seed_version: "biology-seed-v1", answer_source: "worked" }),
-    supabase.from("questions").select("id", { count: "exact", head: true }).eq("subject_id", subject.id).contains("metadata", { biology_seed_version: "biology-seed-v1" }).not("section_id", "is", null),
-    supabase.from("content_sources").select("id", { count: "exact", head: true }).eq("subject_id", subject.id).eq("metadata->>biology_seed_version", "biology-seed-v1").eq("metadata->>biology_material", "true").eq("metadata->>unit_key", "unit-1"),
+    supabase.from("content_sources").select("id", { count: "exact", head: true }).eq("subject_id", subject.id).contains("metadata", { biology_seed_version: "biology-seed-v1" }).or("metadata->>biology_archived.is.null,metadata->>biology_archived.eq.false"),
+    supabase.from("content_sources").select("id", { count: "exact", head: true }).eq("subject_id", subject.id).contains("metadata", { biology_material: true }).or("metadata->>biology_archived.is.null,metadata->>biology_archived.eq.false"),
+    supabase.from("questions").select("id", { count: "exact", head: true }).eq("subject_id", subject.id).contains("metadata", { biology_seed_version: "biology-seed-v1" }).or("metadata->>biology_archived.is.null,metadata->>biology_archived.eq.false"),
+    supabase.from("questions").select("id", { count: "exact", head: true }).eq("subject_id", subject.id).contains("metadata", { biology_seed_version: "biology-seed-v1", answer_source: "worked" }).or("metadata->>biology_archived.is.null,metadata->>biology_archived.eq.false"),
+    supabase.from("questions").select("id", { count: "exact", head: true }).eq("subject_id", subject.id).contains("metadata", { biology_seed_version: "biology-seed-v1" }).or("metadata->>biology_archived.is.null,metadata->>biology_archived.eq.false").not("section_id", "is", null),
+    supabase.from("content_sources").select("id", { count: "exact", head: true }).eq("subject_id", subject.id).eq("metadata->>biology_seed_version", "biology-seed-v1").eq("metadata->>biology_material", "true").or("metadata->>biology_archived.is.null,metadata->>biology_archived.eq.false").eq("metadata->>unit_key", "unit-1"),
   ]);
   console.log(JSON.stringify({ ...subject, seededSources: sources, notePages: notes, seededQuestions: questions, gradedQuestions: graded, taggedQuestions: tagged, unitOneNotes, notesFilterError }, null, 2));
 }
