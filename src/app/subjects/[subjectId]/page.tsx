@@ -7,6 +7,7 @@ import { QuizCreator } from "@/components/QuizCreator";
 import { SubjectExamDate } from "@/components/SubjectExamDate";
 import { BiologyStudyHub } from "@/components/BiologyStudyHub";
 import { BiologyAssessmentSelector } from "@/components/BiologyAssessmentSelector";
+import { BiologyNotesLibrary } from "@/components/BiologyNotesLibrary";
 
 function daysUntil(date?: string | null) {
   if (!date) return null;
@@ -40,7 +41,8 @@ export default async function SubjectPage({ params }: { params: Promise<{ subjec
       </header>
 
       <div className="mt-10 space-y-6">
-        {isBiology && <BiologyStudyHub />}
+        {isBiology && <BiologyStudyHub sources={readySources} />}
+        {isBiology && <BiologyNotesLibrary subjectId={subjectId} />}
         {isBiology && <BiologyAssessmentSelector subjectId={subjectId} sections={sections || []} sources={readySources} />}
         <ImportWorkspace subjectId={subjectId} />
         <QuestionCsvImport subjectId={subjectId} sections={sections || []} papers={(sources || []).filter((source) => source.source_type === "past_paper").map((source) => ({ id: source.id, title: source.title }))} />

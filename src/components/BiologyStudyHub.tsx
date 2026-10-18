@@ -4,10 +4,14 @@ import { useMemo, useState } from "react";
 import Image from "next/image";
 import { BIOLOGY_SOURCE_LIBRARY, GRADE12_BIOLOGY_UNITS, type BiologyUnit } from "@/lib/biology-curriculum";
 
-export function BiologyStudyHub() {
+type Source = { id: string; title: string; source_type: string; status: string; metadata?: Record<string, unknown> | null };
+
+export function BiologyStudyHub({ sources = [] }: { sources?: Source[] }) {
   const [query, setQuery] = useState("");
   const [openUnit, setOpenUnit] = useState("unit-1");
   const [message, setMessage] = useState("");
+  const sourceLibrary = sources.filter((source) => Boolean(source.metadata && (source.metadata as Record<string, unknown>).biology_source));
+  const visibleSources = sourceLibrary.length ? sourceLibrary : BIOLOGY_SOURCE_LIBRARY.map((source, index) => ({ id: `static-${index}`, title: source.name, source_type: "textbook", status: "ready", metadata: { summary: source.summary, pages: source.pages } }));
 
   const filteredUnits = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -39,7 +43,7 @@ export function BiologyStudyHub() {
           <div className="rounded-3xl bg-white/75 p-5 shadow-sm">
             <div className="flex items-center justify-between text-sm"><span className="font-bold text-[#14324b]">Course progress</span><span className="font-bold text-[#1f73b7]">0%</span></div>
             <div className="mt-4 h-2.5 rounded-full bg-[#cfe4f4]"><div className="h-2.5 w-0 rounded-full bg-[#1f73b7]" /></div>
-            <div className="mt-5 grid grid-cols-3 gap-3 text-center"><div><p className="text-xl font-bold text-[#14324b]">0</p><p className="mt-1 text-[11px] text-[#55748b]">mastered</p></div><div><p className="text-xl font-bold text-[#14324b]">12</p><p className="mt-1 text-[11px] text-[#55748b]">unit quizzes</p></div><div><p className="text-xl font-bold text-[#14324b]">{BIOLOGY_SOURCE_LIBRARY.length}</p><p className="mt-1 text-[11px] text-[#55748b]">sources</p></div></div>
+            <div className="mt-5 grid grid-cols-3 gap-3 text-center"><div><p className="text-xl font-bold text-[#14324b]">0</p><p className="mt-1 text-[11px] text-[#55748b]">mastered</p></div><div><p className="text-xl font-bold text-[#14324b]">12</p><p className="mt-1 text-[11px] text-[#55748b]">unit quizzes</p></div><div><p className="text-xl font-bold text-[#14324b]">{visibleSources.length}</p><p className="mt-1 text-[11px] text-[#55748b]">sources</p></div></div>
           </div>
         </div>
       </div>
@@ -54,7 +58,7 @@ export function BiologyStudyHub() {
       </div>
 
       <div id="biology-materials" className="grid gap-6 lg:grid-cols-[1fr_.75fr]">
-        <section className="rounded-3xl border border-black/10 bg-white p-5 sm:p-6"><div className="flex items-start justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-[0.16em] text-black/40">Source library</p><h3 className="mt-2 text-2xl font-bold text-[#14324b]">Original notes stay original</h3></div><span className="rounded-full bg-[#eaf5ff] px-3 py-1 text-xs font-bold text-[#1f5f95]">Verbatim map</span></div><p className="mt-3 text-sm leading-6 text-black/50">This map stores headings, page ranges and question-bank references. Upload the original PDFs below to make the full notes and page previews available inside StudyPal.</p><div className="mt-5 grid gap-2 sm:grid-cols-2">{BIOLOGY_SOURCE_LIBRARY.map((ref) => <div key={ref.name} className="rounded-xl border border-black/10 bg-[#fbfdff] p-3"><p className="text-sm font-bold text-[#14324b]">{ref.name}</p><p className="mt-1 text-xs leading-5 text-black/45">{ref.pages}</p>{ref.summary && <p className="mt-2 text-xs leading-5 text-black/50">{ref.summary}</p>}</div>)}</div></section>
+        <section className="rounded-3xl border border-black/10 bg-white p-5 sm:p-6"><div className="flex items-start justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-[0.16em] text-black/40">Source library</p><h3 className="mt-2 text-2xl font-bold text-[#14324b]">Original notes stay original</h3></div><span className="rounded-full bg-[#eaf5ff] px-3 py-1 text-xs font-bold text-[#1f5f95]">{visibleSources.length} indexed sources</span></div><p className="mt-3 text-sm leading-6 text-black/50">Every indexed source keeps its original title, page count and extracted wording. Open a unit in the verbatim notes reader to study the pages in context.</p><div className="mt-5 grid gap-2 sm:grid-cols-2">{visibleSources.map((source) => { const metadata = (source.metadata || {}) as Record<string, unknown>; return <div key={source.id} className="rounded-xl border border-black/10 bg-[#fbfdff] p-3"><p className="text-sm font-bold text-[#14324b]">{source.title}</p><p className="mt-1 text-xs leading-5 text-black/45">{String(metadata.page_count || metadata.pages || "Source material")}</p>{Boolean(metadata.storage_error) && <p className="mt-2 text-xs leading-5 text-[#a8322d]">Original PDF is indexed, but its file is too large for direct storage; extracted notes remain available.</p>}</div>; })}</div></section>
         <section className="rounded-3xl border border-[#d9e5f1] bg-[#f2f7fb] p-5 sm:p-6"><p className="text-xs font-bold uppercase tracking-[0.16em] text-[#1f5f95]">Source figures</p><h3 className="mt-2 text-2xl font-bold text-[#14324b]">Learn from the diagrams too</h3><p className="mt-3 text-sm leading-6 text-[#315b79]">Two embedded figures from the supplied O-Level notes are already attached to Unit 1 as visual references.</p><div className="mt-4 space-y-4"><figure className="overflow-hidden rounded-2xl border border-black/10 bg-white"><Image src="/biology-figures/o-level-cell-page-1-2.png" alt="Animal cell and plant cell comparison from Biology-notes-for-O-level, page 1" width={910} height={511} className="w-full object-cover" /><figcaption className="px-3 py-2 text-[11px] text-black/45">Animal cell and plant cell comparison - Biology-notes-for-O-level - p. 1</figcaption></figure><figure className="overflow-hidden rounded-2xl border border-black/10 bg-white"><Image src="/biology-figures/o-level-cell-page-2-3.png" alt="Root hair cell figure from Biology-notes-for-O-level, page 2" width={358} height={326} className="mx-auto max-h-44 w-full object-contain p-3" /><figcaption className="px-3 py-2 text-[11px] text-black/45">Root hair cell figure - Biology-notes-for-O-level - p. 2</figcaption></figure></div></section>
       </div>
     </section>
