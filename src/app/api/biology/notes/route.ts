@@ -45,6 +45,8 @@ export async function GET(request: Request) {
       lessonTitle: String(metadata.lesson_title || "Biology notes"),
       sourceName: String(metadata.source_name || "Supplied source"),
       sourcePage: Number(metadata.source_page || 0),
+      ocrDerived: metadata.ocr_derived === true,
+      ocrEngine: metadata.ocr_engine ? String(metadata.ocr_engine) : null,
       pdfUrl: note.storage_path ? urls.get(note.storage_path) || null : null,
     };
   }) });

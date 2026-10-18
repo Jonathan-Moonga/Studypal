@@ -4,7 +4,17 @@
 import { useEffect, useMemo, useState } from "react";
 import { GRADE12_BIOLOGY_UNITS } from "@/lib/biology-curriculum";
 
-type Note = { id: string; title: string; body: string; lessonTitle: string; sourceName: string; sourcePage: number; pdfUrl: string | null };
+type Note = {
+  id: string;
+  title: string;
+  body: string;
+  lessonTitle: string;
+  sourceName: string;
+  sourcePage: number;
+  pdfUrl: string | null;
+  ocrDerived?: boolean;
+  ocrEngine?: string | null;
+};
 
 export function BiologyNotesLibrary({ subjectId }: { subjectId: string }) {
   const [unitKey, setUnitKey] = useState(GRADE12_BIOLOGY_UNITS[0]?.id || "unit-1");
@@ -41,6 +51,6 @@ export function BiologyNotesLibrary({ subjectId }: { subjectId: string }) {
     {loading && <p className="mt-5 rounded-2xl bg-[#f2f8fd] p-4 text-sm text-[#315b79]">Loading the source pages…</p>}
     {error && <p role="alert" className="mt-5 rounded-2xl bg-[#fff0ef] p-4 text-sm text-[#a8322d]">{error}</p>}
     {!loading && !error && !notes.length && <p className="mt-5 rounded-2xl bg-[#fffaf0] p-4 text-sm text-[#7a5b1b]">This unit has not been imported into this profile yet.</p>}
-    {!loading && !error && notes.length > 0 && <div className="mt-5 space-y-4">{Object.entries(grouped).map(([lesson, lessonNotes]) => <div key={lesson} className="rounded-2xl border border-black/10 bg-[#fbfdff]"><div className="border-b border-black/10 px-4 py-3"><h3 className="font-bold text-[#14324b]">{lesson}</h3><p className="mt-1 text-xs text-black/45">{lessonNotes.length} source page{lessonNotes.length === 1 ? "" : "s"}</p></div><div className="divide-y divide-black/10">{lessonNotes.map((note) => <article key={note.id} className="px-4 py-3"><button type="button" onClick={() => setOpenNote(openNote === note.id ? null : note.id)} className="flex w-full items-start justify-between gap-4 text-left"><span><span className="block text-sm font-semibold text-[#14324b]">{note.sourceName}</span><span className="mt-1 block text-xs text-black/45">Page {note.sourcePage}</span></span><span className="rounded-lg bg-[#eaf5ff] px-2.5 py-1 text-xs font-bold text-[#1f5f95]">{openNote === note.id ? "Hide" : "Read"}</span></button>{openNote === note.id && <div className="mt-4 rounded-xl bg-white p-4 shadow-sm"><p className="whitespace-pre-wrap text-sm leading-7 text-[#1f3445]">{note.body}</p>{note.pdfUrl && note.sourcePage > 0 && <a className="mt-4 inline-flex text-xs font-bold text-[#1f73b7] underline" href={`${note.pdfUrl}#page=${note.sourcePage}`} target="_blank" rel="noreferrer">Open original PDF page {note.sourcePage} ↗</a>}</div>}</article>)}</div></div>)}</div>}
+    {!loading && !error && notes.length > 0 && <div className="mt-5 space-y-4">{Object.entries(grouped).map(([lesson, lessonNotes]) => <div key={lesson} className="rounded-2xl border border-black/10 bg-[#fbfdff]"><div className="border-b border-black/10 px-4 py-3"><h3 className="font-bold text-[#14324b]">{lesson}</h3><p className="mt-1 text-xs text-black/45">{lessonNotes.length} source page{lessonNotes.length === 1 ? "" : "s"}</p></div><div className="divide-y divide-black/10">{lessonNotes.map((note) => <article key={note.id} className="px-4 py-3"><button type="button" onClick={() => setOpenNote(openNote === note.id ? null : note.id)} className="flex w-full items-start justify-between gap-4 text-left"><span><span className="block text-sm font-semibold text-[#14324b]">{note.sourceName}</span><span className="mt-1 block text-xs text-black/45">Page {note.sourcePage}</span></span><span className="rounded-lg bg-[#eaf5ff] px-2.5 py-1 text-xs font-bold text-[#1f5f95]">{openNote === note.id ? "Hide" : "Read"}</span></button>{openNote === note.id && <div className="mt-4 rounded-xl bg-white p-4 shadow-sm">{note.ocrDerived && <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">OCR-extracted from an image page. Check the linked original page for diagram labels or ambiguous characters{note.ocrEngine ? ` (${note.ocrEngine})` : ""}.</p>}<p className="whitespace-pre-wrap text-sm leading-7 text-[#1f3445]">{note.body}</p>{note.pdfUrl && note.sourcePage > 0 && <a className="mt-4 inline-flex text-xs font-bold text-[#1f73b7] underline" href={`${note.pdfUrl}#page=${note.sourcePage}`} target="_blank" rel="noreferrer">Open original PDF page {note.sourcePage} ↗</a>}</div>}</article>)}</div></div>)}</div>}
   </section>;
 }

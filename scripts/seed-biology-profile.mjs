@@ -205,9 +205,14 @@ async function main() {
   }
   const { data: sections, error: sectionsError } = await supabase.from("curriculum_sections").select("id,title,topics").eq("subject_id", subject.id).eq("user_id", subject.user_id);
   if (sectionsError) throw sectionsError;
-  const old = await supabase.from("content_sources").select("id").eq("user_id", subject.user_id).eq("subject_id", subject.id).contains("metadata", { biology_seed_version: VERSION });
-  if (old.error) throw old.error;
-  const oldIds = (old.data || []).map((row) => row.id);
+  const oldRows = [];
+  for (let start = 0; ; start += 1000) {
+    const old = await supabase.from("content_sources").select("id").eq("user_id", subject.user_id).eq("subject_id", subject.id).contains("metadata", { biology_seed_version: VERSION }).range(start, start + 999);
+    if (old.error) throw old.error;
+    oldRows.push(...(old.data || []));
+    if (!old.data || old.data.length < 1000) break;
+  }
+  const oldIds = oldRows.map((row) => row.id);
   if (oldIds.length) {
     const oldIdSet = new Set(oldIds);
     const oldQuestions = await supabase.from("questions").select("id,source_id").eq("user_id", subject.user_id).eq("subject_id", subject.id);
@@ -253,7 +258,7 @@ async function main() {
       if (!page.text.trim()) continue;
       const unitKey = classifyUnit(page.text);
       const lessonTitle = lessonFor(page.text, unitKey);
-      noteRows.push({ user_id: subject.user_id, subject_id: subject.id, source_type: "textbook", title: `${UNIT_META[unitKey].title} - ${lessonTitle} - ${source.name} p. ${page.page}`.slice(0, 180), raw_text: page.text, status: "ready", file_name: source.name, mime_type: "text/plain", storage_path: createdSources.find((item) => item.id === sourceId)?.storage_path || null, metadata: { biology_seed_version: VERSION, biology_material: true, derived_note: true, unit_key: unitKey, unit_title: UNIT_META[unitKey].title, lesson_title: lessonTitle, source_id: sourceId, source_name: source.name, source_page: page.page, verbatim: true } });
+      noteRows.push({ user_id: subject.user_id, subject_id: subject.id, source_type: "textbook", title: `${UNIT_META[unitKey].title} - ${lessonTitle} - ${source.name} p. ${page.page}`.slice(0, 180), raw_text: page.text, status: "ready", file_name: source.name, mime_type: "text/plain", storage_path: createdSources.find((item) => item.id === sourceId)?.storage_path || null, metadata: { biology_seed_version: VERSION, biology_material: true, derived_note: true, unit_key: unitKey, unit_title: UNIT_META[unitKey].title, lesson_title: lessonTitle, source_id: sourceId, source_name: source.name, source_page: page.page, extraction: source.extraction || "pdf_text", ocr_derived: source.extraction === "local_ocr", ocr_engine: source.ocr_engine || null, verbatim: true } });
     }
   }
   await insertBatches("content_sources", noteRows, 100);
